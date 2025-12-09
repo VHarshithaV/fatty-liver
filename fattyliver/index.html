@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fatty Liver Detection & Monitoring</title>
+
+  <!-- Chart.js & html2pdf & TF.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.9.3/dist/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f7f7f7; --card:#fff; --text:#111; --muted:#666; --accent:#007bff;
+    }
+    [data-theme="dark"]{ --bg:#0f1724; --card:#0b1220; --text:#e6eef8; --muted:#9fb2cf; --accent:#60a5fa; }
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, Arial; margin:18px; background:var(--bg); color:var(--text);}
+    .wrap{max-width:980px; margin:12px auto;}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}
+    h1{font-size:20px;margin:0}
+    .controls{display:flex;gap:8px;align-items:center}
+    .card{background:var(--card); padding:14px; border-radius:10px; box-shadow:0 6px 18px rgba(2,6,23,0.08); margin-bottom:12px}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:12px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr; gap:10px}
+    label{font-weight:600;font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+    input[type="number"], select, input[type="file"]{width:100%;padding:8px;border-radius:8px;border:1px solid #d1d5db;background:transparent}
+    .symptoms{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+    .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:var(--accent);color:white;border:none;cursor:pointer}
+    .btn-outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+    .result-block{padding:12px;border-radius:8px;background:linear-gradient(180deg,#ecffef,#f7fff7);border-left:6px solid #16a34a}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .small-card{padding:12px;border-radius:8px;background:var(--card);text-align:center}
+    .muted{color:var(--muted);font-size:13px}
+    img.preview{max-width:100%;border-radius:8px;margin-top:8px;display:block}
+    .charts{display:flex;gap:12px;flex-direction:column}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+    footer{font-size:12px;color:var(--muted);margin-top:8px;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="wrap" id="pageRoot">
+    <header>
+      <div>
+        <h1>Fatty Liver Detection & Monitoring</h1>
+        <div class="muted">AI-assisted risk score + ultrasound image detection · Local & offline</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn-outline" id="darkToggle">Dark</button>
+        <button class="btn" id="pdfBtn">Download Report (PDF)</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- left: form -->
+      <div>
+        <div class="card">
+          <h3 style="margin:0 0 10px 0">Patient Info & Measurements</h3>
+
+          <div class="form-row">
+            <div>
+              <label>Age</label>
+              <input id="age" type="number" min="0" />
+            </div>
+            <div>
+              <label>Alcohol consumption</label>
+              <select id="alcohol">
+                <option value="0">No drinking</option>
+                <option value="1">Occasional</option>
+                <option value="2">Regular</option>
+                <option value="3">Heavy</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top:8px">
+            <div>
+              <label>Weight (kg)</label>
+              <input id="weight" type="number" step="0.1" />
+            </div>
+            <div>
+              <label>Height (cm)</label>
+              <input id="height" type="number" step="0.1" />
+            </div>
+          </div>
+
+          <div style="margin-top:10px" class="form-row">
+            <div>
+              <label>Fasting Blood Sugar (mg/dL)</label>
+              <input id="sugar" type="number" />
+            </div>
+            <div>
+              <label>Cholesterol (mg/dL)</label>
+              <input id="chol" type="number" />
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <label>Symptoms (check all that apply)</label>
+            <div class="symptoms">
+              <label><input class="symptom" type="checkbox" value="1" /> Abdominal discomfort</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Fatigue</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Loss of appetite</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Sudden weight loss</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Nausea</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Yellowing of eyes (Jaundice)</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Swelling in legs</label>
+              <label><input class="symptom" type="checkbox" value="1" /> Dark urine</label>
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <label>Upload liver ultrasound image (jpg/png)</label>
+            <input id="liverImage" type="file" accept="image/*" />
+            <img id="imgPreview" class="preview" src="" alt="" style="display:none" />
+            <div style="margin-top:8px" class="muted">Tip: use clear transverse/longitudinal ultrasound images.</div>
+          </div>
+
+          <div style="margin-top:12px" class="row">
+            <button class="btn" id="checkBtn">Check Risk & Detect Liver</button>
+            <button class="btn-outline" id="speakBtn">🔊 Speak Result</button>
+            <button class="btn-outline" id="gradcamBtn">Show Grad-CAM</button>
+          </div>
+        </div>
+
+        <div class="card" id="historyCard">
+          <h3 style="margin:0 0 10px 0">History (local)</h3>
+          <div id="historyList" class="muted">No entries yet.</div>
+          <div style="margin-top:8px" class="row">
+            <button class="btn-outline" id="clearHistory">Clear History</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- right: dashboard & results -->
+      <aside>
+        <div class="card">
+          <div style="display:flex; gap:8px; align-items:center; justify-content:space-between;">
+            <h3 style="margin:0">Results & Dashboard</h3>
+            <div class="muted" id="lastUpdate">No run yet</div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px">
+            <div class="small-card" id="cardBMI">
+              <div class="muted">BMI</div>
+              <div id="bmiVal" style="font-weight:700">-</div>
+            </div>
+            <div class="small-card" id="cardLiver">
+              <div class="muted">Liver Status</div>
+              <div id="liverVal" style="font-weight:700">-</div>
+            </div>
+            <div class="small-card">
+              <div class="muted">Fasting Sugar</div>
+              <div id="sugarVal" style="font-weight:700">-</div>
+            </div>
+            <div class="small-card">
+              <div class="muted">Cholesterol</div>
+              <div id="cholVal" style="font-weight:700">-</div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px" id="resultBlock"></div>
+        </div>
+
+        <div class="card charts">
+          <h3 style="margin:0 0 8px 0">Trends (from local history)</h3>
+          <canvas id="trendChart" height="220"></canvas>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0 0 8px 0">Model Info</h3>
+          <div class="muted" id="modelInfo">Model: attempting to load <code>model/model.json</code></div>
+          <div style="margin-top:8px" class="muted">Notes: For reliable results, use a trained model and >100 images per class.</div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="muted">Project demo — not a substitute for a professional medical diagnosis.</footer>
+  </div>
+
+<script>
+/* ========= Globals ========= */
+let model = null;
+const CLASS_LABELS = ["Normal","Mild Fatty (Grade 1)","Moderate (Grade 2)","Severe (Grade 3)"];
+const storageKey = "fattyHistory_v1";
+
+/* ========= UI helpers ========= */
+const el = id => document.getElementById(id);
+const nowStr = () => new Date().toLocaleString();
+
+/* ========= Theme toggle ========= */
+const themeBtn = el('darkToggle');
+themeBtn.addEventListener('click', ()=>{
+  const root = document.documentElement;
+  const current = root.getAttribute('data-theme');
+  if(current === 'dark'){ root.removeAttribute('data-theme'); themeBtn.textContent='Dark'; }
+  else { root.setAttribute('data-theme','dark'); themeBtn.textContent='Light'; }
+});
+
+/* ========= Load model (best-effort) ========= */
+async function tryLoadModel(){
+  try{
+    model = await tf.loadLayersModel('model/model.json');
+    el('modelInfo').textContent = 'Model loaded from model/model.json';
+    console.log('Model loaded', model);
+  }catch(e){
+    console.warn('Model load failed', e);
+    el('modelInfo').textContent = 'Model not found or failed to load. Place converted TFJS model in /model/';
+    model = null;
+  }
+}
+tryLoadModel();
+
+/* ========= Image preview ========= */
+const imgInput = el('liverImage');
+const imgPreview = el('imgPreview');
+imgInput.addEventListener('change', (ev)=>{
+  const f = ev.target.files && ev.target.files[0];
+  if(!f){ imgPreview.style.display='none'; imgPreview.src=''; return; }
+  imgPreview.src = URL.createObjectURL(f);
+  imgPreview.style.display = 'block';
+});
+
+/* ========= Calculate risk & detect ========= */
+el('checkBtn').addEventListener('click', runAll);
+
+async function runAll(){
+  // read inputs
+  const age = Number(el('age').value) || 0;
+  const weight = Number(el('weight').value) || 0;
+  const height = Number(el('height').value) || 0;
+  const alcohol = Number(el('alcohol').value) || 0;
+  const sugar = Number(el('sugar').value) || 0;
+  const chol = Number(el('chol').value) || 0;
+  const symptoms = document.querySelectorAll('.symptom:checked').length;
+
+  // basic validation
+  if(!weight || !height){ alert('Please enter weight and height'); return; }
+
+  // BMI
+  const hm = height/100;
+  const bmi = +(weight / (hm*hm)).toFixed(1);
+  el('bmiVal').textContent = bmi;
+
+  // risk heuristic (same as earlier, but slightly extended)
+  let risk = 0;
+  if(age > 40) risk += 10;
+  if(bmi > 25) risk += 20;
+  if(bmi > 30) risk += 30;
+  risk += alcohol * 10;
+  if(sugar > 110) risk += 15;
+  if(sugar > 150) risk += 25;
+  if(chol > 200) risk += 20;
+  if(chol > 250) risk += 30;
+  risk += symptoms * 8;
+  if(risk > 100) risk = 100;
+  risk = Math.round(risk);
+
+  // condition text
+  let condition = "Low Risk - Healthy";
+  if(risk >= 60) condition = "High Risk - Consult doctor";
+  else if(risk >= 30) condition = "Moderate Risk";
+
+  // set simple cards
+  el('sugarVal').textContent = sugar || '-';
+  el('cholVal').textContent = chol || '-';
+
+  // prepare output block
+  const precautions = [
+    "Avoid alcohol completely",
+    "Exercise minimum 30 mins daily",
+    "Reduce sugar and fried foods",
+    "Maintain healthy weight"
+  ];
+  const diet = [
+    "Green leafy vegetables",
+    "Fruits (apple, papaya)",
+    "High-fibre foods: oats, brown rice",
+    "Avoid junk food and sugary drinks"
+  ];
+
+  // run model prediction if available
+  let liverText = '';
+  const fileInput = el('liverImage');
+  if(fileInput.files.length > 0 && model){
+    try{
+      const file = fileInput.files[0];
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      await new Promise(r=> img.onload = r);
+
+      // prepare tensor - try to detect model input shape
+      // standard: resize to 128x128 and normalize
+      const inputSize = 128;
+      let t = tf.browser.fromPixels(img).toFloat();
+      // if grayscale expected, convert to 3 channels still
+      t = tf.image.resizeBilinear(t, [inputSize,inputSize]);
+      t = t.expandDims(0).div(tf.scalar(255));
+
+      // predict
+      const pred = model.predict(t);
+      let data = null;
+      if(Array.isArray(pred)) {
+        // if model returns multiple tensors, take first
+        data = pred[0].dataSync();
+      } else if(pred.dataSync){
+        data = pred.dataSync();
+      }
+
+      // interpret output:
+      if(data == null){ liverText = "Model returned no usable output"; }
+      else if(data.length === 1){
+        // binary sigmoid
+        liverText = data[0] > 0.5 ? "Fatty Liver Detected (model confidence " + (data[0]*100).toFixed(1) + "%)" : "Normal Liver (confidence " + ((1-data[0])*100).toFixed(1) + "%)";
+      } else {
+        // multiclass - take argmax (assume softmax)
+        let maxI = 0;
+        for(let i=1;i<data.length;i++) if(data[i] > data[maxI]) maxI = i;
+        const label = CLASS_LABELS[maxI] || ("Class "+maxI);
+        liverText = `${label} (class ${maxI}, conf ${(data[maxI]*100).toFixed(1)}%)`;
+      }
+
+    }catch(err){
+      console.error(err);
+      liverText = "Prediction failed: " + (err.message || err);
+    }
+  } else if(fileInput.files.length > 0 && !model){
+    liverText = "Model not loaded — place converted TFJS model in /model/ to enable detection.";
+  } else {
+    liverText = "No ultrasound image uploaded.";
+  }
+
+  // show results
+  el('liverVal').textContent = liverText.split('\n')[0] || '-';
+  el('lastUpdate').textContent = "Last run: " + nowStr();
+
+  const resultHtml = `
+    <div class="result-block">
+      <h3 style="margin:0 0 6px 0">Result Summary</h3>
+      <div><strong>Risk:</strong> ${risk}%</div>
+      <div><strong>Condition:</strong> ${condition}</div>
+      <div style="margin-top:8px"><strong>Ultrasound detection:</strong> ${liverText}</div>
+      <div style="margin-top:8px"><strong>Precautions:</strong><ul>${precautions.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+      <div><strong>Diet:</strong><ul>${diet.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+    </div>
+  `;
+  el('resultBlock').innerHTML = resultHtml;
+
+  // save to local history
+  saveHistory({date: new Date().toISOString(), age, weight, height, bmi, sugar, chol, risk, liverText});
+  renderHistory();
+  updateCharts();
+}
+
+/* ========= History storage & UI ========= */
+function saveHistory(entry){
+  const arr = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  arr.push(entry);
+  localStorage.setItem(storageKey, JSON.stringify(arr));
+}
+function loadHistory(){ return JSON.parse(localStorage.getItem(storageKey) || '[]'); }
+function renderHistory(){
+  const arr = loadHistory().slice().reverse();
+  if(arr.length === 0){ el('historyList').innerHTML = '<div class="muted">No entries yet.</div>'; return; }
+  const html = arr.map((e,i)=> {
+    const d = new Date(e.date).toLocaleString();
+    return `<div style="padding:8px;border-bottom:1px solid #eee">
+      <div style="font-weight:700">${d}</div>
+      <div class="muted">BMI: ${e.bmi} · Sugar: ${e.sugar} · Chol: ${e.chol} · Risk: ${e.risk}%</div>
+      <div style="margin-top:6px">${e.liverText}</div>
+    </div>`;
+  }).join('');
+  el('historyList').innerHTML = html;
+}
+el('clearHistory').addEventListener('click', ()=>{
+  if(!confirm('Clear local history?')) return;
+  localStorage.removeItem(storageKey);
+  renderHistory();
+  updateCharts();
+});
+renderHistory();
+
+/* ========= Charts (Chart.js) ========= */
+let trendChart = null;
+function updateCharts(){
+  const data = loadHistory();
+  if(data.length === 0){
+    if(trendChart){ trendChart.destroy(); trendChart=null; }
+    return;
+  }
+  // take last 10 entries
+  const last = data.slice(-20);
+  const labels = last.map(e=> new Date(e.date).toLocaleDateString());
+  const bmiData = last.map(e=> e.bmi || null);
+  const sugarData = last.map(e=> e.sugar || null);
+  const cholData = last.map(e=> e.chol || null);
+
+  const ctx = el('trendChart').getContext('2d');
+  if(trendChart) trendChart.destroy();
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {label:'BMI', data:bmiData, tension:0.3, borderWidth:2},
+        {label:'Sugar', data:sugarData, tension:0.3, borderWidth:2},
+        {label:'Cholesterol', data:cholData, tension:0.3, borderWidth:2}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{position:'bottom'}}
+    }
+  });
+}
+updateCharts();
+
+/* ========= PDF download ========= */
+el('pdfBtn').addEventListener('click', ()=> {
+  const opt = { margin:0.3, filename:'fatty_liver_report.pdf', html2canvas:{scale:1.5}, jsPDF:{unit:'in', format:'a4',orientation:'portrait'} };
+  const content = el('pageRoot');
+  html2pdf().from(content).set(opt).save();
+});
+
+/* ========= Text-to-Speech ========= */
+el('speakBtn').addEventListener('click', ()=>{
+  const lbl = el('liverVal').textContent || 'No result';
+  const riskNode = el('resultBlock').querySelector('div strong');
+  const riskText = riskNode ? riskNode.parentNode.textContent : '';
+  const toSpeak = `Result: ${lbl}. ${riskText}. Please consult a doctor for confirmation.`;
+  const ut = new SpeechSynthesisUtterance(toSpeak);
+  speechSynthesis.speak(ut);
+});
+
+/* ========= Grad-CAM (best-effort) ========= */
+el('gradcamBtn').addEventListener('click', async ()=>{
+  // attempt Grad-CAM: requires model with conv layers and ability to get intermediate activations
+  if(!model){ alert('Model not loaded — cannot run Grad-CAM.'); return; }
+  const fileInput = el('liverImage');
+  if(!fileInput.files.length){ alert('Upload an image first.'); return; }
+  try{
+    // Very basic attempt: pick the last conv layer or first conv layer's output
+    const layer = model.layers.slice().reverse().find(l => l.getClassName().toLowerCase().includes('conv'));
+    if(!layer){ alert('Model has no conv layer accessible for Grad-CAM.'); return; }
+    // load image
+    const img = new Image(); img.src = URL.createObjectURL(fileInput.files[0]);
+    await new Promise(r=> img.onload = r);
+
+    // create tensor and normalize
+    const t = tf.browser.fromPixels(img).resizeBilinear([128,128]).expandDims(0).toFloat().div(tf.scalar(255));
+    // create a sub-model to get conv output and final output
+    const convOutputModel = tf.model({inputs: model.inputs, outputs: layer.output});
+    const convOut = convOutputModel.predict(t); // shape [1,h,w,channels]
+    const preds = model.predict(t);
+    const probs = preds.dataSync ? preds.dataSync() : preds[0].dataSync();
+    // select predicted index
+    let predIdx = 0;
+    if(probs.length === 1){ predIdx = probs[0] > 0.5 ? 1 : 0; } else {
+      predIdx = probs.indexOf(Math.max(...probs));
+    }
+    // get gradient of the predicted score wrt convOut
+    const gradFunction = tf.grad((x) => {
+      const out = model.predict(x);
+      if(Array.isArray(out)) return out[0].as1D().slice([predIdx],[1]).asScalar();
+      if(out.shape.length === 2) return out.as2D(out.shape[0], out.shape[1]).gather([predIdx],1).asScalar();
+      return out.as1D().slice([predIdx],[1]).asScalar();
+    });
+    const grads = gradFunction(t); // NOTE: this is a very rough attempt; TFJS gradient API use may vary
+    // fallback: just inform user
+    alert('Grad-CAM attempt completed — please check console. Note: Grad-CAM requires model support; this is a best-effort attempt.');
+    console.log({convOut, probs, grads});
+  }catch(err){
+    console.error(err);
+    alert('Grad-CAM failed: ' + (err.message||err));
+  }
+});
+
+/* ========= initialize ========= */
+(function init(){
+  document.querySelectorAll('input[type=number]').forEach(i=>i.setAttribute('inputmode','numeric'));
+})();
+</script>
+</body>
+</html>
